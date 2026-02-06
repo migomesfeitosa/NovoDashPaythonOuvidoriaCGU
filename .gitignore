@@ -1,0 +1,17 @@
+# Ambiente Virtual
+.venv/
+__pycache__/
+*.pyc
+
+# Dados Brutos (Pasta Raw inteira)
+data/raw/
+
+# Dados Processados Pesados
+data/processed/ouvidoria.parquet
+data/processed/lai.parquet
+data/processed/lai_pedidos.parquet
+data/processed/lai_recursos.parquet
+
+# Sistema e Configurações
+.DS_Store
+.env

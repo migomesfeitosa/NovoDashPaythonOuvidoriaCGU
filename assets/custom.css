@@ -1,0 +1,88 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+
+body {
+    background-color: #f4f6f8;
+    font-family: 'Inter', sans-serif;
+    color: #2d3748;
+    margin: 0;
+    /* MATA O SCROLL HORIZONTAL E VERTICAL DA JANELA PRINCIPAL */
+    overflow: hidden; 
+    height: 100vh;
+}
+
+/* Ajuste para telas muito pequenas (Mobile) - libera scroll se necessário */
+@media (max-width: 768px) {
+    body {
+        overflow-y: auto;
+    }
+}
+
+/* --- SOLUÇÃO DE SOBREPOSIÇÃO --- */
+
+/* Garante que o container de filtros fique ACIMA dos gráficos */
+.filter-container {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    padding: 15px 20px;
+    margin-bottom: 15px;
+    border-left: 5px solid #5a67d8;
+    position: relative; /* Necessário para o z-index funcionar */
+    z-index: 100;       /* Camada alta */
+}
+
+/* Garante que o menu do Dropdown flutue ACIMA de tudo */
+.Select-menu-outer {
+    z-index: 9999 !important;
+    position: absolute !important; 
+}
+
+/* Estilo dos Cartões */
+.custom-card {
+    background: white;
+    border-radius: 12px;
+    border: 1px solid rgba(0,0,0,0.05); /* Borda sutil ajuda na definição */
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.03);
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden; /* O conteúdo interno não vaza */
+    position: relative;
+    z-index: 1; /* Camada base */
+}
+
+.custom-card:hover {
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.08);
+    transform: translateY(-1px);
+    z-index: 10; /* Traz para frente ao passar o mouse */
+    transition: all 0.2s ease-in-out;
+}
+
+/* Cabeçalhos */
+.card-header-custom {
+    padding: 10px 15px;
+    border-bottom: 1px solid #f0f2f5;
+    font-weight: 600;
+    font-size: 0.8rem;
+    color: #4a5568;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    background-color: #fff;
+}
+
+/* KPIs */
+.kpi-card {
+    border-left: 4px solid transparent;
+}
+.kpi-title {
+    color: #718096;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+}
+.kpi-value {
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: #1a202c;
+}
