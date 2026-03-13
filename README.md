@@ -1,45 +1,59 @@
-# 🏛️ Painel de Inteligência - Transparência e Ouvidoria (CGU)
+🏛️ Painel de Inteligência: Transparência e Ouvidoria (CGU)
+Ciência de Dados e IA a serviço da Governança Digital e Cidadania.
 
-## 🎯 Objetivo
+Este projeto apresenta um sistema de Governança Digital e Análise Preditiva aplicado aos dados de transparência passiva e ouvidoria da Controladoria-Geral da União (CGU). Desenvolvido como parte do Mestrado em Informática Aplicada (UFRPE).
 
-Este projeto visa monitorar a saúde da relação entre Estado e Cidadão, integrando dados de **Transparência Passiva (LAI)** e **Manifestações de Ouvidoria**. O painel utiliza Ciência de Dados e Machine Learning para identificar gargalos, prever negativas de acesso e analisar a satisfação do cidadão.
+🎯 Objetivo
+Monitorar a saúde da relação entre Estado e Cidadão, integrando dados de Transparência Passiva (LAI) e Manifestações de Ouvidoria. O painel utiliza Machine Learning para identificar gargalos, prever riscos de atraso (SLA) e analisar a satisfação do cidadão de forma proativa.
 
-## 📊 Visões do Painel
+📊 Visões do Painel e Funcionalidades
+1. Visão Estratégica e Monitoramento
+Dashboards Interativos: Monitoramento de volume de demandas (LAI vs Ouvidoria) com série temporal comparativa.
 
-### 1. Visão Estratégica (Home)
+Eficiência LAI: Análise de pedidos negados vs concedidos e ranking de órgãos mais demandados.
 
-- Monitoramento de volume de demandas (LAI vs Ouvidoria).
-- Série temporal comparativa.
-- Mapa de calor da participação cidadã.
+Inteligência Social: Perfil demográfico do cidadão (Gênero, Raça, Faixa Etária) e principais assuntos reclamados.
 
-### 2. Monitoramento LAI
+ETL Robusto: Processamento escalável de grandes volumes de dados (7M+ registros) utilizando Parquet.
 
-- Análise de pedidos negados vs concedidos.
-- Ranking de órgãos mais demandados.
-- Eficiência no tempo de resposta.
+2. Laboratório de IA & NLP
+Simulador de Risco: Classificação em tempo real de manifestações com probabilidade de atraso (SLA).
 
-### 3. Inteligência da Ouvidoria
+Explicabilidade Global e Local (SHAP): Visualização dos termos técnicos que mais influenciam as decisões do modelo de IA.
 
-- Perfil demográfico do cidadão (Gênero, Raça, Faixa Etária).
-- Análise de satisfação e resolutividade.
-- Principais assuntos reclamados.
+Estimativa de Satisfação: Algoritmo de análise de sentimento para mensurar a resolutividade sob a ótica do cidadão.
+![alt text](image.png)
+Shutterstock
+Explorar
+🛠️ Tecnologias
+Linguagem: Python 3.12
 
-### 4. Laboratório de IA (Em desenvolvimento)
+Interface e Gráficos: Dash & Plotly
 
-- **Predição:** Modelo para estimar probabilidade de negativa de um pedido.
-- **Clusterização:** Agrupamento de órgãos por perfil de atendimento.
-- **NLP:** Análise de tópicos em textos de manifestações.
+Machine Learning: Scikit-Learn (Random Forest), Imbalanced-learn (SMOTE)
 
-## 🛠️ Tecnologias
+NLP: TF-IDF com filtragem customizada de ruídos gramaticais e Regex.
 
-- **Linguagem:** Python 3.10+
-- **Interface:** Dash & Plotly
-- **Processamento:** Pandas & PyArrow (Parquet)
-- **Machine Learning:** Scikit-learn, SHAP, Imbalanced-learn
+Interpretabilidade: SHAP (Lundberg, 2017).
 
-## 🚀 Como Rodar o Projeto
+Armazenamento: PyArrow (Parquet)
 
-1. **Instale as dependências:**
+📂 Estrutura do Projeto
+Plaintext
+├── data/
+│   ├── raw/             # Dados brutos (Ignorado no Git)
+│   └── processed/       # Parquets otimizados e Modelos (.pkl)
+├── pages/               # Módulos das visões do Dashboard
+├── scripts/             # Pipelines de ETL e Treino da IA
+├── app.py               # Arquivo principal (Execução)
+└── requirements.txt     # Dependências do sistema
+🚀 Como Executar
+Instale as dependências:
 
-   ```bash
-   pip install -r requirements.txt
+Bash
+pip install -r requirements.txt
+Execute o dashboard:
+
+Bash
+python app.py
+Acesse no navegador: http://127.0.0.1:8050

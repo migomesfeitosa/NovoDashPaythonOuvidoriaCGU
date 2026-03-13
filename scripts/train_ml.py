@@ -61,6 +61,12 @@ def treinar_modelo_completo():
     
     X = tfidf.fit_transform(df['assunto'].astype(str))
     y = df['alvo']
+    
+    # Adicione isso temporariamente para ver a porcentagem real
+    print((y.map({0: 'Dentro do prazo', 1: 'Atrasado'})
+        .value_counts(normalize=True) * 100)
+        .round(2)
+        .astype(str) + "%")
 
     # 4. BALANCEAMENTO (SMOTE)
     print("   -> Aplicando SMOTE...")
@@ -107,7 +113,8 @@ def treinar_modelo_completo():
     df_shap = df_shap.sort_values('Impacto', ascending=False).head(15)
     df_shap.to_parquet(PATH_SHAP_GLOBAL)
 
-    print("🏁 [IA] Sucesso! Tudo pronto para a Entrega Final.")
+    print("🏁 [IA] Sucesso!")
+    
 
 if __name__ == "__main__":
     treinar_modelo_completo()
