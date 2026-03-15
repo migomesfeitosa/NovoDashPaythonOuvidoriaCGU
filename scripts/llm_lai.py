@@ -128,53 +128,64 @@ if coluna_texto is None:
 
 
 # =============================================================================
-# 7. LIMPAR TEXTOS (COM TRAVA DE MEMÓRIA E AMOSTRAGEM)
+# 7. LIMPAR TEXTOS (ORDEM CORRIGIDA)
 # =============================================================================
 
 print(f"Base carregada com {len(df)} registros.")
 
-# AJUSTE DE PERFORMANCE: Amostragem para evitar travamento
+# 1. Amostragem
 limite_amostra = 30000
 if len(df) > limite_amostra:
-    print(f"Base muito grande. Reduzindo para {limite_amostra} registros para viabilizar o NLP...")
     df = df.sample(limite_amostra, random_state=42).copy()
 
-print("Processando textos (spaCy Batch)...")
-
+print("Processando textos...")
 inicio = time.time()
 
-# Garante que não existam valores nulos que quebrem o spaCy
-textos = df[coluna_texto].fillna("").astype(str).tolist()
+# 2. Preparação inicial e remoção de ruídos de "vazio"
+textos_raw = df[coluna_texto].fillna("").astype(str).str.lower().tolist()
+textos_sem_ruido = [re.sub(r"não informado|nao informado|sem informação|vazio", "", t) for t in textos_raw]
 
-# Antes de chamar o limpar_textos_batch:
-textos = df[coluna_texto].astype(str).str.lower().tolist()
-# Remove padrões comuns de "campo vazio"
-textos = [re.sub(r"não informado|nao informado|sem informação|vazio", "", t) for t in textos]
+# 3. UNIÃO MANUAL (O pulo do gato: deve ser feito ANTES ou DEPOIS da limpeza)
+# Vamos fazer antes para o spaCy entender como uma unidade só
+substituicoes = {
+    "microempreendedor individual": "microempreendedor_individual",
+    "direitos humanos": "direitos_humanos",
+    "transporte aereo": "transporte_aereo",
+    "etica profissional": "etica_profissional",
+    "codigo de conduta": "codigo_conduta",
+    "certidao de nascimento": "certidao_nascimento"
+}
 
-# Processamento em lote (Batch)
-df["texto_limpo"] = limpar_textos_batch(textos)
+for original, substituto in substituicoes.items():
+    textos_sem_ruido = [t.replace(original, substituto) for t in textos_sem_ruido]
 
-# Remove registros que ficaram vazios após a limpeza de stopwords
+# 4. Limpeza via spaCy (Batch)
+df["texto_limpo"] = limpar_textos_batch(textos_sem_ruido)
+
+# 5. REMOVE VAZIOS E GERA CORPUS
 df = df[df["texto_limpo"].str.strip() != ""].copy()
-
 corpus = df["texto_limpo"].tolist()
 
-print(f"Tempo NLP: {round(time.time() - inicio, 2)} segundos para {len(df)} documentos.")
-
+print(f"Tempo NLP: {round(time.time() - inicio, 2)}s para {len(df)} documentos.")
 
 # =============================================================================
-# 8. GERAR BIGRAMAS
+# 8. GERAR BIGRAMAS (UNIÃO DE TERMOS COMPOSTOS)
 # =============================================================================
 
 tokens = [doc.split() for doc in corpus]
 
-phrases = Phrases(tokens, min_count=5, threshold=10)
+# Ajustamos o threshold: quanto MENOR o valor, MAIS ele une palavras.
+# min_count: a expressão deve aparecer pelo menos 3 vezes para ser unida.
+phrases = Phrases(tokens, min_count=3, threshold=5) 
 
 bigram = Phraser(phrases)
 
+# Aplica a união (ex: 'microempreendedor', 'individual' vira 'microempreendedor_individual')
 tokens_bigram = [bigram[t] for t in tokens]
 
 corpus = [" ".join(t) for t in tokens_bigram]
+
+print("Bigramas gerados (ex: microempreendedor_individual).")
 
 
 # =============================================================================
@@ -231,56 +242,56 @@ print("Nuvem de palavras salva.")
 
 
 # =============================================================================
-# 11. GRÁFICO DE PARETO (COM CATEGORIA 'OUTROS' PARA 100%)
+# 11. PARETO HORIZONTAL EQUILIBRADO (RIGOR 80% COM LEITURA LIMPA)
 # =============================================================================
 
-# 1. Preparar o DataFrame completo
+# 1. Preparar DataFrame e Acumulado
 pareto_completo = pd.DataFrame(
     sorted(frequencias.items(), key=lambda x: x[1], reverse=True),
-    columns=["palavra","frequencia"]
+    columns=["palavra", "frequencia"]
 )
+total_base = pareto_completo["frequencia"].sum()
+pareto_completo["acumulado"] = pareto_completo["frequencia"].cumsum() / total_base
 
-# 2. Separar o Top 19 e agrupar o restante em 'Outros'
-top_n = 19
-df_top = pareto_completo.head(top_n).copy()
-df_others_raw = pareto_completo.iloc[top_n:].copy()
+# 2. DEFINIR CORTE LIMPO: Pegamos as top 25 palavras
+# Isso garante que os labels no eixo Y não fiquem minúsculos
+n_limite = 25
+df_top = pareto_completo.head(n_limite).copy()
 
-# Soma a frequência de todas as palavras restantes
-soma_outros = df_others_raw["frequencia"].sum()
-df_others = pd.DataFrame([{"palavra": "Outros", "frequencia": soma_outros}])
+# 3. CALCULAR O "RESTO DOS 80%":
+# Pegamos as palavras da posição 26 até onde atinge 80%
+df_meio = pareto_completo.iloc[n_limite:]
+df_meio_80 = df_meio[df_meio["acumulado"] <= 0.81]
 
-# 3. Consolidar o DataFrame final (20 barras no total)
-top_pareto = pd.concat([df_top, df_others], ignore_index=True)
+soma_relevantes_80 = df_meio_80["frequencia"].sum()
+soma_cauda_longa = pareto_completo.iloc[len(df_top) + len(df_meio_80):]["frequencia"].sum()
 
-# 4. Calcular percentuais sobre o total absoluto
-total_geral = top_pareto["frequencia"].sum()
-top_pareto["percentual"] = top_pareto["frequencia"] / total_geral
-top_pareto["acumulado"] = top_pareto["percentual"].cumsum()
+# 4. Criar as linhas de agrupamento
+row_relevantes = pd.DataFrame([{"palavra": f"Outros {len(df_meio_80)} termos (até 80%)", "frequencia": soma_relevantes_80}])
+row_cauda = pd.DataFrame([{"palavra": "Demais termos (100%)", "frequencia": soma_cauda_longa}])
 
-# 5. Gerar o Gráfico
-fig, ax = plt.subplots(figsize=(12,6))
+# 5. Consolidar e Inverter
+top_pareto = pd.concat([df_top[["palavra", "frequencia"]], row_relevantes, row_cauda], ignore_index=True)
+top_pareto = top_pareto.iloc[::-1].reset_index(drop=True)
 
-# Barras em Lilás
-ax.bar(top_pareto["palavra"], top_pareto["frequencia"], color="#9370DB") 
+# Recalcular acumulado para a linha
+top_pareto["acumulado_grafico"] = (top_pareto["frequencia"][::-1].cumsum()[::-1]) / total_base
 
-ax.set_xticklabels(top_pareto["palavra"], rotation=45, ha='right')
-ax.set_ylabel("Frequência")
+# 6. Gerar Gráfico
+fig, ax1 = plt.subplots(figsize=(12, 10)) # Altura fixa confortável para 27 linhas
 
-ax2 = ax.twinx()
+bars = ax1.barh(top_pareto["palavra"], top_pareto["frequencia"], color="#9370DB", alpha=0.7)
+ax2 = ax1.twiny()
+ax2.plot(top_pareto["acumulado_grafico"], top_pareto["palavra"], marker="o", color="#6A0DAD")
+ax2.axvline(x=0.8, color='red', linestyle='--', label="Corte 80%")
 
-# Linha em Roxo Escuro (Agora chegando em 1.0 / 100%)
-ax2.plot(top_pareto["palavra"], top_pareto["acumulado"], marker="o", color="#6A0DAD", linewidth=2)
+ax1.set_xlabel("Frequência Absoluta")
+ax2.set_xlabel("Percentual Acumulado (%)")
+plt.title("Análise de Pareto: Top 25 + Agrupamento de Relevância (Rigor 80%)")
 
-ax2.set_ylabel("Percentual acumulado")
-ax2.set_ylim(0, 1.1) # Garante que o topo dos 100% apareça bem
-
-plt.title("Pareto dos Termos Mais Frequentes (Visão 100%)")
 plt.tight_layout()
-
-plt.savefig(IMG_PARETO, dpi=300, bbox_inches="tight")
+plt.savefig(IMG_PARETO, dpi=300)
 plt.close()
-
-print("Gráfico de Pareto consolidado (100%) salvo.")
 
 # =============================================================================
 # 12. MODELAGEM DE TÓPICOS (LDA)

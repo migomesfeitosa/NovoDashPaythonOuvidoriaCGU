@@ -449,80 +449,85 @@ def update_ouvidoria(anos, ufs, n_clicks):
     else:
         fig_top = go.Figure()
 
-    # 4. PARETO ORGÃOS
-    # No callback update_ouvidoria, substitua o bloco "4. PARETO ORGÃOS"
-    # 4. PARETO ORGÃOS
-
+    # 4. PARETO ORGÃOS (HORIZONTAL - RIGOR ESTATÍSTICO 80/20)
     if "ORGAO" in dff.columns:
+        # 1. Contagem e Ordenação Inicial
+        df_org_base = dff["ORGAO"].value_counts().reset_index()
+        df_org_base.columns = ["Orgao", "Qtd"]
 
-        df_org = dff["ORGAO"].value_counts().reset_index()
-        df_org.columns = ["Orgao", "Qtd"]
+        # 2. Cálculo do Acumulado para encontrar o corte de 80%
+        total_demandas = df_org_base["Qtd"].sum()
+        df_org_base["Percentual"] = df_org_base["Qtd"] / total_demandas
+        df_org_base["Acumulado"] = df_org_base["Percentual"].cumsum()
 
-        top10 = df_org.head(10).copy()
-        outros_qtd = df_org.iloc[10:]["Qtd"].sum()
+        # 3. Aplicação da Regra de Pareto (Seleciona quem compõe 80% do volume)
+        df_top = df_org_base[df_org_base["Acumulado"] <= 0.81].copy()
+        
+        # Limites de segurança para o layout do Dashboard
+        if len(df_top) < 5: df_top = df_org_base.head(5).copy()
+        if len(df_top) > 15: df_top = df_org_base.head(15).copy()
 
-        if outros_qtd > 0:
-            outros_row = pd.DataFrame([{"Orgao": "Outros", "Qtd": outros_qtd}])
-            top10 = pd.concat([top10, outros_row], ignore_index=True)
+        # 4. Agrupamento dos demais em "Outros"
+        qtd_top = df_top["Qtd"].sum()
+        qtd_outros = total_demandas - qtd_top
+        
+        if qtd_outros > 0:
+            outros_row = pd.DataFrame([{"Orgao": "Outros Órgãos", "Qtd": qtd_outros}])
+            df_final = pd.concat([df_top[["Orgao", "Qtd"]], outros_row], ignore_index=True)
+        else:
+            df_final = df_top[["Orgao", "Qtd"]].copy()
 
-        top10 = top10.sort_values("Qtd", ascending=False)
+        # 5. Inverter para o Gráfico Horizontal (Maior fica no topo)
+        df_final = df_final.iloc[::-1].reset_index(drop=True)
 
-        top10["Acumulado"] = (
-            top10["Qtd"].cumsum() / top10["Qtd"].sum() * 100
-        ).round(1)
-
-        top10["Orgao"] = top10["Orgao"].apply(
-            lambda x: str(x)[:35] + "..." if len(str(x)) > 35 else str(x)
-        )
+        # 6. Recalcular a linha de Pareto (Acumulado do gráfico)
+        # O cálculo precisa ser feito de cima para baixo no visual
+        df_final["Acum_Graph"] = (df_final["Qtd"][::-1].cumsum()[::-1] / total_demandas) * 100
 
         fig_pareto = go.Figure()
 
-        fig_pareto.add_trace(
-            go.Bar(
-                x=top10["Orgao"],
-                y=top10["Qtd"],
-                name="Volume",
-                marker_color=COR_DESTAQUE,
-                text=top10["Qtd"],
-                textposition="outside",
-            )
-        )
+        # Barras Horizontais (Eixo X de baixo)
+        fig_pareto.add_trace(go.Bar(
+            y=df_final["Orgao"],
+            x=df_final["Qtd"],
+            orientation='h',
+            name="Volume",
+            marker_color="#9370DB",
+            text=df_final["Qtd"],
+            textposition="auto",
+        ))
 
-        fig_pareto.add_trace(
-            go.Scatter(
-                x=top10["Orgao"],
-                y=top10["Acumulado"],
-                name="% Acumulado",
-                mode="lines+markers",
-                line=dict(color="#f59e0b", width=2),
-                yaxis="y2",
-            )
-        )
+        # Linha de Pareto (Eixo X de cima)
+        fig_pareto.add_trace(go.Scatter(
+            y=df_final["Orgao"],
+            x=df_final["Acum_Graph"],
+            name="% Acumulado",
+            mode="lines+markers",
+            line=dict(color="#6A0DAD", width=3),
+            xaxis="x2" # Vincula ao eixo superior
+        ))
 
-        fig_pareto.add_hline(
-            y=80,
-            line_dash="dot",
-            line_color="red",
-            annotation_text="80%",
-            yref="y2",
-        )
+        # Linha de Corte Vermelha (Vertical em 80%)
+        fig_pareto.add_vline(x=80, line_dash="dash", line_color="red", xref="x2")
 
         fig_pareto.update_layout(
+            #title="Distribuição por Órgão: Regra de Pareto (80/20)",
             plot_bgcolor="rgba(0,0,0,0)",
             paper_bgcolor="rgba(0,0,0,0)",
-            yaxis=dict(title="Quantidade"),
-            yaxis2=dict(
-                title="% Acumulado",
-                overlaying="y",
-                side="right",
-                range=[0,110],
+            xaxis=dict(title="Quantidade de Manifestações"),
+            xaxis2=dict(
+                title="Percentual Acumulado (%)",
+                overlaying="x",
+                side="top",
+                range=[0, 105],
                 ticksuffix="%"
             ),
-            legend=dict(orientation="h", y=1.1),
-            margin=dict(l=20, r=40, t=30, b=120),
-            xaxis=dict(tickangle=-35),
+            # automargin garante que nomes longos de ministérios não sejam cortados
+            yaxis=dict(automargin=True, title="Órgãos Demandados"),
+            legend=dict(orientation="h", y=-0.2),
+            margin=dict(l=150, r=50, t=100, b=50),
+            height=450
         )
-
     else:
         fig_pareto = go.Figure()
 

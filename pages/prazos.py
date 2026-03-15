@@ -45,6 +45,8 @@ if not df_prazo.empty:
         "DIAS_ATRASO": "DIAS_ATRASO",
         "DATA_REGISTRO": "DATA_REGISTRO",
         "DATA REGISTRO": "DATA_REGISTRO",
+        "DATA_ABERTURA": "DATA_REGISTRO",  # Adicione o nome que estiver no seu arquivo
+        "DT_REGISTRO": "DATA_REGISTRO",    # Outra variação comum
         "NOME ÓRGÃO": "ORGAO",
     }
     df_prazo.rename(columns=mapa_cols, inplace=True)
@@ -313,118 +315,94 @@ layout = html.Div(
 )
 def update_prazos(anos):
     if df_prazo.empty:
-        return [go.Figure().add_annotation(text="Sem Dados", showarrow=False)] * 7
+        empty_fig = go.Figure().add_annotation(text="Sem Dados", showarrow=False)
+        return [empty_fig] * 7
 
     dff = df_prazo.copy()
 
-    # Filtro de Ano (Suporta lista ou valor único)
+    # --- PROTEÇÃO CONTRA KEYERROR ---
+    # Se por algum motivo o mapeamento falhou, garantimos que a coluna exista, mesmo que zerada
+    if "TEMPO_RESOLUCAO" not in dff.columns:
+        # Tenta procurar qualquer coluna que tenha 'DIAS' ou 'TEMPO' no nome
+        cols_possiveis = [c for c in dff.columns if 'DIAS' in str(c).upper() or 'TEMPO' in str(c).upper()]
+        if cols_possiveis:
+            dff["TEMPO_RESOLUCAO"] = dff[cols_possiveis[0]]
+        else:
+            dff["TEMPO_RESOLUCAO"] = 0 # Cria a coluna com zero para evitar o erro de KeyError
+    
+    # Garante que seja numérico (se houver strings, o mean() quebra)
+    dff["TEMPO_RESOLUCAO"] = pd.to_numeric(dff["TEMPO_RESOLUCAO"], errors='coerce').fillna(0)
+    # --------------------------------
+
+    # Filtro de Ano
     if anos:
         lista_anos = anos if isinstance(anos, list) else [anos]
         dff = dff[dff["ANO"].isin(lista_anos)]
+    
+    if dff.empty:
+        empty_fig = go.Figure().add_annotation(text="Nenhum dado", showarrow=False)
+        return [empty_fig] * 7
 
-    # Se a coluna principal não existir, criamos uma zerada para o app não quebrar
-    if "TEMPO_RESOLUCAO" not in dff.columns:
-        dff["TEMPO_RESOLUCAO"] = 0
+    # Agora o cálculo não vai mais dar KeyError
+    tempo_medio = float(dff["TEMPO_RESOLUCAO"].mean())
+    
+    # ... resto do código
+    
+    # Cálculo de Atrasos
+    col_atraso = "DIAS_ATRASO" if "DIAS_ATRASO" in dff.columns else "TEMPO_RESOLUCAO"
+    mask_atraso = dff[col_atraso] > (30 if col_atraso == "TEMPO_RESOLUCAO" else 0)
+    
+    total_atrasados = len(dff[mask_atraso])
+    atraso_medio = dff.loc[mask_atraso, col_atraso].mean()
+    atraso_medio = float(atraso_medio) if pd.notnull(atraso_medio) else 0
+    
+    sla_pct = ((len(dff) - total_atrasados) / len(dff) * 100) if len(dff) > 0 else 0
 
-    # ... (Restante dos seus cálculos de KPI e Gráficos permanecem iguais)
-
-    # --- CÁLCULO DE KPIs ---
-    tempo_medio = dff["TEMPO_RESOLUCAO"].mean()
-
-    # Lógica de Atraso
-    if "DIAS_ATRASO" in dff.columns:
-        atrasados = len(dff[dff["DIAS_ATRASO"] > 0])
-        atraso_medio = dff[dff["DIAS_ATRASO"] > 0]["DIAS_ATRASO"].mean()
-    else:
-        atrasados = len(dff[dff["TEMPO_RESOLUCAO"] > 30])
-        atraso_medio = 0
-
-    sla_pct = ((len(dff) - atrasados) / len(dff) * 100) if len(dff) > 0 else 0
-
-    # Pior Órgão (Calculado apenas sobre quem tem dados de tempo)
-    pior_nome, pior_val = "-", 0
+    # 4. KPI de Órgão Lento
+    pior_nome, pior_val = "N/A", 0
     if "ORGAO" in dff.columns:
-        df_valid = dff.dropna(subset=["TEMPO_RESOLUCAO"])
-        if not df_valid.empty:
-            pior_nome = df_valid.groupby("ORGAO")["TEMPO_RESOLUCAO"].mean().idxmax()
-            pior_val = df_valid.groupby("ORGAO")["TEMPO_RESOLUCAO"].mean().max()
-            # Encurta nome para o KPI
-            pior_nome = (
-                str(pior_nome)[:18] + "..."
-                if len(str(pior_nome)) > 18
-                else str(pior_nome)
-            )
+        resumo_orgao = dff.groupby("ORGAO")["TEMPO_RESOLUCAO"].mean()
+        if not resumo_orgao.empty:
+            pior_nome = resumo_orgao.idxmax()
+            pior_val = resumo_orgao.max()
+            pior_nome = str(pior_nome)[:15] + "..." if len(str(pior_nome)) > 15 else str(pior_nome)
 
-    # --- GERAÇÃO DOS GRÁFICOS ---
-
-    # 1. Histograma
-    fig_hist = px.histogram(
-        dff, x="TEMPO_RESOLUCAO", nbins=30, color_discrete_sequence=[CORES["roxo"]]
-    )
-    fig_hist.update_layout(LAYOUT_CLEAN)
-    fig_hist.update_layout(xaxis_title="Dias", yaxis_title=None, bargap=0.1)
-
-    # 2. Evolução
-    if "DATA_REGISTRO" in dff.columns:
-        df_ev = (
-            dff.groupby(dff["DATA_REGISTRO"].dt.to_period("M").astype(str))[
-                "TEMPO_RESOLUCAO"
-            ]
-            .mean()
-            .reset_index()
-        )
-        fig_ev = px.line(df_ev, x="DATA_REGISTRO", y="TEMPO_RESOLUCAO", markers=True)
+    # 5. Gráfico de Evolução (Correção do Erro de Period)
+    if "DATA_REGISTRO" in dff.columns and not dff["DATA_REGISTRO"].isnull().all():
+        df_ev = dff.copy()
+        # Converte para String para evitar erro de serialização JSON
+        df_ev["MES_REF"] = df_ev["DATA_REGISTRO"].dt.strftime("%Y-%m")
+        df_ev = df_ev.groupby("MES_REF")["TEMPO_RESOLUCAO"].mean().reset_index()
+        
+        fig_ev = px.line(df_ev, x="MES_REF", y="TEMPO_RESOLUCAO", markers=True)
         fig_ev.update_traces(line_color=CORES["azul"], line_width=3)
-        fig_ev.update_layout(LAYOUT_CLEAN)
-        fig_ev.update_layout(xaxis_title=None, yaxis_title=None)
     else:
-        fig_ev = go.Figure()
+        fig_ev = go.Figure().add_annotation(text="Datas ausentes", showarrow=False)
 
-    # 3. Ranking
+    # 6. Gráfico de Ranking (Pareto-like)
     if "ORGAO" in dff.columns:
-        df_rank = dff.dropna(subset=["TEMPO_RESOLUCAO"])
-        df_rank = df_rank.groupby("ORGAO")["TEMPO_RESOLUCAO"].mean().reset_index()
+        df_rank = dff.groupby("ORGAO")["TEMPO_RESOLUCAO"].mean().reset_index()
         df_rank = df_rank.sort_values("TEMPO_RESOLUCAO", ascending=True).tail(10)
-
-        # Encurtar nomes longos
-        df_rank["ORGAO_CURTO"] = df_rank["ORGAO"].apply(
-            lambda x: str(x)[:25] + "..." if len(str(x)) > 25 else str(x)
-        )
-
+        
         fig_rank = px.bar(
-            df_rank,
-            x="TEMPO_RESOLUCAO",
-            y="ORGAO_CURTO",
-            orientation="h",
-            text_auto=".0f",
+            df_rank, x="TEMPO_RESOLUCAO", y="ORGAO", 
+            orientation="h", text_auto=".0f"
         )
-        fig_rank.update_traces(
-            marker_color=CORES["laranja"], textposition="outside", cliponaxis=False
-        )
-        fig_rank.update_layout(LAYOUT_CLEAN)
-        fig_rank.update_layout(
-            margin=dict(l=0, r=40, t=10, b=10),
-            xaxis=dict(showgrid=True),
-            yaxis=dict(automargin=True),
-        )
+        fig_rank.update_traces(marker_color=CORES["laranja"])
     else:
         fig_rank = go.Figure()
 
-    # Retorno
+    # 7. Histograma
+    fig_hist = px.histogram(dff, x="TEMPO_RESOLUCAO", color_discrete_sequence=[CORES["roxo"]])
+
+    # Aplicar Layout Clean em todos
+    for f in [fig_ev, fig_rank, fig_hist]:
+        f.update_layout(LAYOUT_CLEAN)
+
     return (
-        criar_kpi(tempo_medio, "Tempo Médio", "d"),
-        criar_kpi(
-            sla_pct,
-            "No Prazo",
-            "%",
-            CORES["azul"] if sla_pct > 80 else CORES["laranja"],
-        ),
-        criar_kpi(
-            atraso_medio if not np.isnan(atraso_medio) else 0,
-            "Atraso Médio",
-            "d",
-            CORES["vermelho"],
-        ),
+        criar_kpi(tempo_medio, "Tempo Médio", " d"),
+        criar_kpi(sla_pct, "No Prazo", "%", CORES["azul"] if sla_pct > 80 else CORES["laranja"]),
+        criar_kpi(atraso_medio, "Atraso Médio", " d", CORES["vermelho"]),
         criar_kpi_texto(pior_nome, f"{pior_val:.0f} dias"),
         fig_hist,
         fig_ev,
